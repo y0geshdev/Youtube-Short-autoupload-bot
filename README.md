@@ -223,14 +223,14 @@ python3 app.py --config channels/my-channel/config.json
 
 ```json
 {
-  "csv_columns": ["File_name", "title", "description", "tags", "state", "video_id"],
+  "csv_columns": ["File_name", "title", "description", "tags", "is_processed", "video_id"],
   "title": "title",
   "description": "description",
   "tags": "hashtags:join:,"
 }
 ```
 
-The `:join:` syntax joins list values (e.g. `hashtags` array joined with `,`). `File_name` is auto-populated from the MP4 filename. `state` always defaults to `unprocessed` and `video_id` to empty — `app.py` manages both after uploads.
+The `:join:` syntax joins list values (e.g. `hashtags` array joined with `,`). `File_name` is auto-populated from the MP4 filename. `is_processed` always defaults to `0` and `video_id` to empty — `app.py` manages both after uploads.
 
 ---
 
@@ -244,18 +244,18 @@ The `:join:` syntax joins list values (e.g. `hashtags` array joined with `,`). `
 | `title` | Video title |
 | `description` | Video description |
 | `tags` | Comma-separated tags (split on `,`, then stripped) |
-| `state` | `unprocessed` or `processed` — **re-run safety**: `app.py` skips rows where `state=processed`. `convert_clips.py` writes `unprocessed` for every new row; `app.py` flips it to `processed` (and fills `video_id`) only after a successful upload. |
+| `is_processed` | `0` or `1` bit — **re-run safety**: `app.py` skips rows where `is_processed=1`. `convert_clips.py` writes `0` for every new row; `app.py` flips it to `1` (and fills `video_id`) only after a successful upload. |
 | `video_id` | YouTube video ID, written by `app.py` after successful upload (empty until then). |
 
 Example:
 
 ```
-File_name,title,description,tags,state,video_id
-clip01.mp4,My Video Title,"Video description here.\n\n#Tag1 #Tag2","Tag1,Tag2",processed,Q1nRJ4fXcws
-clip02.mp4,Another Title,"Desc","Tag1",unprocessed,
+File_name,title,description,tags,is_processed,video_id
+clip01.mp4,My Video Title,"Video description here.\n\n#Tag1 #Tag2","Tag1,Tag2",1,Q1nRJ4fXcws
+clip02.mp4,Another Title,"Desc","Tag1",0,
 ```
 
-> **Re-running `app.py` is safe:** already-uploaded videos (state=`processed`) are skipped automatically, so only new/unprocessed rows get uploaded. Old CSVs without `state`/`video_id` columns still work — every row is treated as `unprocessed`, and the columns are added on the first successful upload.
+> **Re-running `app.py` is safe:** already-uploaded videos (`is_processed=1`) are skipped automatically, so only new/unprocessed rows get uploaded. Old CSVs without `is_processed`/`video_id` columns still work — every row is treated as `0` (unprocessed), and the columns are added on the first successful upload.
 
 ---
 
@@ -347,7 +347,7 @@ python3 app.py --config channels/my-new-channel/config.json
 
 - `token.json` is created automatically on first successful OAuth and reused on subsequent runs (no re-auth needed unless expired). Each channel has its own `token.json` under its directory.
 - Uploads are scheduled (not immediate) — each video gets a `publishAt` time based on `start_date` + batch index × `schedule_timings`.
-- The CSV tracks upload state: `convert_clips.py` marks every row `state=unprocessed`; `app.py` only uploads unprocessed rows and marks them `processed` (with the YouTube `video_id`) after each successful upload. Re-running `app.py` is safe — processed videos are skipped.
+- The CSV tracks upload state: `convert_clips.py` marks every row `is_processed=0`; `app.py` only uploads rows where `is_processed=0` and flips it to `1` (with the YouTube `video_id`) after each successful upload. Re-running `app.py` is safe — processed videos are skipped.
 - Privacy status defaults to `private`; change to `public` or `unlisted` in the channel's `config.json` as needed.
 - The `.gitignore` excludes `env/`, `__pycache__`, and channel `videos/` directories.
 - All channel-specific artifacts live under `channels/<channel-name>/` — root-level files are global defaults/templates only.

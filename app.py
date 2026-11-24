@@ -296,13 +296,13 @@ def resumable_upload(request):
 
 
 def save_csv(csv_path, rows, fieldnames):
-    """Rewrite the CSV, adding state/video_id columns if they were missing."""
+    """Rewrite the CSV, adding is_processed/video_id columns if they were missing."""
     fieldnames = list(fieldnames)
-    for extra in ("state", "video_id"):
+    for extra in ("is_processed", "video_id"):
         if extra not in fieldnames:
             fieldnames.append(extra)
     for row in rows:
-        row.setdefault("state", "unprocessed")
+        row.setdefault("is_processed", "0")
         row.setdefault("video_id", "")
     tmp_path = str(csv_path) + ".tmp"
     with open(tmp_path, "w", newline="", encoding="utf-8") as f:
@@ -460,7 +460,7 @@ def main() -> None:
 
     pending = [
         row for row in videos
-        if row.get("state", "unprocessed").strip().lower() != "processed"
+        if row.get("is_processed", "0").strip() != "1"
     ]
     skipped = len(videos) - len(pending)
     if skipped:
@@ -498,7 +498,7 @@ def main() -> None:
             )
             video_id = schedule_upload(youtube, file_path, title, description, tags, publish_time)
             if video_id:
-                row["state"] = "processed"
+                row["is_processed"] = "1"
                 row["video_id"] = video_id
                 save_csv(csv_path, videos, fieldnames)
                 print(f"💾 Marked {file_name} as processed in {CSV_FILE}")

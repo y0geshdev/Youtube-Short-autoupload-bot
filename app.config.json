@@ -9,7 +9,7 @@
     "video_category": "YouTube category ID for uploaded videos (15 = Pets & Animals; see catogory.txt for full list).",
     "privacy_status": "Privacy status of uploaded videos (private/public/unlisted).",
     "video_directory": "Directory containing MP4 video files to upload.",
-    "csv_file": "CSV file with video metadata (consumed via csv.DictReader). Rows with state='processed' are skipped on re-runs; the script updates state and video_id after each successful upload.",
+    "csv_file": "CSV file with video metadata (consumed via csv.DictReader). Rows with is_processed=1 are skipped on re-runs; the script updates is_processed and video_id after each successful upload.",
     "set_size": "Number of videos to upload per batch (one batch per day).",
     "start_date": "Start date for scheduling uploads (YYYY-MM-DD).",
     "schedule_timings": "List of [hour, minute] UTC times for each video within a batch, applied in order.",

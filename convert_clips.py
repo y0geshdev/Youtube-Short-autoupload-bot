@@ -104,7 +104,7 @@ def convert(
     fieldnames = list(
         field_mapping.get(
             "csv_columns",
-            ["File_name", "title", "description", "tags", "state", "video_id"],
+            ["File_name", "title", "description", "tags", "is_processed", "video_id"],
         )
     )
 
@@ -127,10 +127,10 @@ def convert(
         for col in fieldnames:
             if col == "File_name":
                 row[col] = mp4_name
-            elif col == "state":
-                # New rows always start as unprocessed unless the mapping says otherwise.
+            elif col == "is_processed":
+                # New rows always start as unprocessed (0) unless the mapping says otherwise.
                 mapping = field_mapping.get(col)
-                row[col] = resolve_value(meta, mapping, default="unprocessed")
+                row[col] = str(resolve_value(meta, mapping, default="0"))
             elif col == "video_id":
                 row[col] = resolve_value(meta, field_mapping.get(col), default="")
             else:
