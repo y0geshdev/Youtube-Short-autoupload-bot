@@ -25,7 +25,7 @@ Here’s how you can recreate this project from scratch:
 3. **Prepare the Script**:
    - Save the provided script into a file named `app.py`.
    - Place `client_secret.json` in the same directory as your script and rename it to `yt_upload.json`.
-   - Ensure you have a `video_metadata.csv` file with appropriate metadata for your videos.
+   - Ensure you have a `video_metadata.csv` file with columns `File_name,title,description,tags,state,video_id` (generate it with `convert_clips.py`; `state` starts as `unprocessed` and `app.py` flips it to `processed` after each successful upload, so re-runs skip already-uploaded videos).
 
 4. **Populate the Video Directory**:
    - Create a folder named `videos` in the same directory as your script.
