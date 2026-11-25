@@ -18,9 +18,8 @@ A config-driven Python bot that converts clip metadata (JSON + MP4) into a YouTu
 ```
 Youtube-Short-autoupload-bot/
 ├── app.py                      # Main uploader (config-driven, OAuth + upload)
-├── app.config.json             # Root-level upload settings (global defaults)
 ├── convert_clips.py            # Generic clip JSON → CSV converter (config-driven)
-├── convert_clips.config.json   # Root-level converter settings (global defaults)
+├── config.json                 # Root-level settings (global defaults for upload + converter)
 ├── yt_upload.json              # Google OAuth 2.0 client secrets (YouTube Data API v3)
 ├── token.json                  # Auto-generated OAuth token (created on first run)
 ├── catogory.txt                # YouTube video category ID reference
@@ -28,15 +27,13 @@ Youtube-Short-autoupload-bot/
 ├── .gitignore                  # Ignores env/, __pycache__, channel video dirs
 └── channels/                   # One directory per YouTube channel
     ├── <channel-name>/         # Per-channel directory (auto-created on first run)
-    │   ├── config.json         # Channel-specific upload settings (overrides app.config.json)
-    │   ├── convert_clips.config.json   # Channel-specific converter settings
+    │   ├── config.json         # Channel-specific settings (overrides root config.json)
     │   ├── yt_upload.json      # Channel-specific OAuth client secrets (optional)
     │   ├── token.json          # Channel-specific OAuth token (auto-created)
     │   ├── videos/             # Staged MP4s ready for upload (clip01.mp4 … clipNN.mp4)
     │   └── video_metadata.csv  # Generated CSV consumed by app.py (for this channel)
     └── <channel-name-2>/
         ├── config.json
-        ├── convert_clips.config.json
         ├── yt_upload.json
         ├── token.json
         ├── videos/
@@ -54,15 +51,13 @@ You need to edit these files before running:
 | File | Location | What to Edit |
 |------|----------|--------------|
 | `yt_upload.json` | Repo root | **Required** — Replace placeholder client_id/client_secret with your real Google OAuth 2.0 credentials |
-| `app.config.json` | Repo root | Optional — Review global defaults (category, privacy, schedule timings, etc.) |
-| `convert_clips.config.json` | Repo root | Optional — Set `clips_dir` to your clips directory path |
-| `channels/<channel-name>/config.json` | Per-channel | **Per-channel** — Override any `app.config.json` setting for this specific channel |
-| `channels/<channel-name>/convert_clips.config.json` | Per-channel | **Per-channel** — Set channel-specific `clips_dir`, `videos_dir`, `csv_out` |
+| `config.json` | Repo root | **Root defaults** — Review global defaults (category, privacy, schedule timings, clips_dir, etc.) for upload + converter |
+| `channels/<channel-name>/config.json` | Per-channel | **Per-channel** — Override any root `config.json` setting for this specific channel (clips_dir, video_directory, csv_file, schedule, etc.) |
 | `channels/<channel-name>/yt_upload.json` | Per-channel | Optional — Use different OAuth credentials for this channel |
 
 **Minimum edits to get started:**
 1. Replace `yt_upload.json` with your real Google OAuth credentials
-2. Set `clips_dir` in `convert_clips.config.json` (or a channel's `convert_clips.config.json`) to point to your clips directory
+2. Set `clips_dir` in `config.json` (or a channel's `config.json`) to point to your clips directory
 
 ---
 
@@ -72,8 +67,7 @@ When you run the scripts for a channel, the following is created under `channels
 
 | Path | Purpose |
 |------|---------|
-| `config.json` | Channel-specific upload settings (created by you or auto-generated from `app.config.json`) |
-| `convert_clips.config.json` | Channel-specific converter settings |
+| `config.json` | Channel-specific settings (created by you or auto-generated from root `config.json`) |
 | `token.json` | Auto-generated OAuth token (created on first successful auth) |
 | `videos/` | Staged MP4s copied from your clips directory |
 | `video_metadata.csv` | Generated CSV with `File_name,title,description,tags` columns |
@@ -110,47 +104,39 @@ pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-pyt
 
 ## Quick Start (End-to-End)
 
-### Step 1: Prepare clip data for a channel
+### Step 1: Create channel config
 
-Create a channel directory and its converter config:
+Create a channel directory and copy the root config as a starting point:
 
 ```bash
 # Create channel directory
 mkdir -p channels/my-channel/videos
 
-# Copy the converter config template into the channel dir
-cp convert_clips.config.json channels/my-channel/convert_clips.config.json
+# Copy root config and customize per-channel values
+cp config.json channels/my-channel/config.json
 ```
 
-Edit `channels/my-channel/convert_clips.config.json` to set `clips_dir` to your clips directory:
+Edit `channels/my-channel/config.json` to set channel-specific values (e.g., `video_directory`, `csv_file`, `start_date`, `schedule_timings`, `privacy_status`, `clips_dir`).
+
+### Step 2: Prepare clip data for the channel
+
+Before running the converter, set `clips_dir` in `channels/my-channel/config.json` to point to your clip batch (it varies per batch):
 
 ```json
-{
-  "clips_dir": "/home/yogesh/Documents/peakCutSetupDir/data/users/u_local/creators/chaoscratetv/videos/20261123-033506-ad05eed369/clips",
-  "repo_dir": ".",
-  "videos_dir": "channels/my-channel/videos",
-  "csv_out": "channels/my-channel/video_metadata.csv",
-  "glob_pattern": "clip*.json",
-  "video_ext": ".mp4",
-  "file_name_pattern": "{stem}",
-  "field_mapping": {
-    "csv_columns": ["File_name", "title", "description", "tags"],
-    "title": "title",
-    "description": "description",
-    "tags": "hashtags:join:,"
-  }
-}
+"clips_dir": "/home/yogesh/Documents/.../data/users/u_local/creators/chaoscratetv/videos/20261123-033506-ad05eed369/clips"
 ```
 
-Then run the converter:
+Then run the converter using your channel config:
 
 ```bash
-python3 convert_clips.py --config channels/my-channel/convert_clips.config.json
+python3 convert_clips.py --config channels/my-channel/config.json
 ```
 
-This reads clip JSON + MP4 files from `clips_dir`, copies MP4s into `channels/my-channel/videos/`, and writes `channels/my-channel/video_metadata.csv`.
+This reads clip JSON + MP4 files from `clips_dir`, copies MP4s into `channels/my-channel/videos/`, and writes `channels/my-channel/video_metadata.csv` — all paths taken from `channels/my-channel/config.json`.
 
-### Step 2: Authenticate and list channels
+> Tip: You can still override individual values with `--clips-dir DIR`, `--repo-dir DIR`, `--video-directory DIR`, or `--csv-file PATH` flags if needed for a one-off run.
+
+### Step 3: Authenticate and upload
 
 ```bash
 rm -f token.json          # Force fresh OAuth
@@ -160,16 +146,6 @@ python3 app.py --list-channels
 This prints an authorization URL. Visit it in your browser, sign in with your Google account, copy the authorization code, paste it back. The script then lists all YouTube channels under your account with their IDs and titles.
 
 **If you have multiple channels:** Make note of which channel you want to upload to. During the OAuth authorization screen, select the specific channel you want before granting access.
-
-### Step 3: Create channel config and upload
-
-Create `channels/my-channel/config.json` (copy from `app.config.json` and adjust as needed):
-
-```bash
-cp app.config.json channels/my-channel/config.json
-```
-
-Edit `channels/my-channel/config.json` to set channel-specific values (e.g., `video_directory`, `csv_file`, `start_date`, `schedule_timings`, `privacy_status`).
 
 Then run the uploader:
 
@@ -186,38 +162,35 @@ python3 app.py --config channels/my-channel/config.json
 
 ## Configuration Reference
 
-### Root-level `app.config.json` (global defaults)
+### `config.json` (root defaults + per-channel overrides)
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `client_secrets_file` | string | `"yt_upload.json"` | Path to Google OAuth 2.0 client secrets JSON |
-| `token_file` | string | `"token.json"` | Path to stored OAuth token (auto-created on first auth) |
-| `youtube_upload_scope` | array | `["https://www.googleapis.com/auth/youtube.upload"]` | OAuth scope for upload access |
-| `youtube_readonly_scope` | array | `["https://www.googleapis.com/auth/youtube.readonly"]` | Read-only scope (needed to list channels) |
-| `youtube_api_service_name` | string | `"youtube"` | Google API service name |
-| `youtube_api_version` | string | `"v3"` | YouTube Data API version |
-| `video_category` | string | `"15"` | YouTube category ID (15 = Pets & Animals; see `catogory.txt`) |
-| `privacy_status` | string | `"private"` | `private` / `public` / `unlisted` |
-| `video_directory` | string | `"videos"` | Directory containing MP4 files to upload |
-| `csv_file` | string | `"video_metadata.csv"` | CSV with video metadata (consumed via `csv.DictReader`) |
-| `set_size` | int | `5` | Number of videos per batch (one batch per day) |
-| `start_date` | string | `"2025-04-26"` | Start date for scheduling (YYYY-MM-DD) |
-| `schedule_timings` | array | `[[23,0],[23,30],[0,0],...]` | List of `[hour, minute]` UTC times per video within a batch |
-| `oauth_port` | int | `0` | Local server port for OAuth callback (0 = random available port) |
-| `auth_method` | string | `"console"` | `console` (no redirect URI needed) or `local_server` (needs registered redirect URI) |
+Both `app.py` and `convert_clips.py` read from `config.json`. Each script uses only the keys relevant to it and ignores the rest. Unknown keys (e.g. `_comment` documentation) are ignored.
 
-### Root-level `convert_clips.config.json` (global defaults)
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `clips_dir` | string | (required) | Directory containing clip JSON + MP4 files |
-| `repo_dir` | string | (script dir) | Target repo directory (contains `app.py`) |
-| `videos_dir` | string | `"videos"` | Subdirectory under `repo_dir` for staged MP4s |
-| `csv_out` | string | `"video_metadata.csv"` | Output CSV filename under `repo_dir` |
-| `glob_pattern` | string | `"clip*.json"` | Glob pattern to find clip metadata JSON files |
-| `video_ext` | string | `".mp4"` | Extension of video files to copy alongside each JSON |
-| `file_name_pattern` | string | `"{stem}"` | Pattern to build video file name from JSON stem (`{stem}`, `{ext}`) |
-| `field_mapping` | object | (see below) | Maps CSV columns to source JSON keys |
+| Key | Type | Default | Used by | Description |
+|-----|------|---------|---------|-------------|
+| `client_secrets_file` | string | `"yt_upload.json"` | app.py | Path to Google OAuth 2.0 client secrets JSON |
+| `token_file` | string | `"token.json"` | app.py | Path to stored OAuth token (auto-created on first auth) |
+| `youtube_upload_scope` | array | `["https://www.googleapis.com/auth/youtube.upload"]` | app.py | OAuth scope for upload access |
+| `youtube_readonly_scope` | array | `["https://www.googleapis.com/auth/youtube.readonly"]` | app.py | Read-only scope (needed to list channels) |
+| `youtube_api_service_name` | string | `"youtube"` | app.py | Google API service name |
+| `youtube_api_version` | string | `"v3"` | app.py | YouTube Data API version |
+| `video_category` | string | `"15"` | app.py | YouTube category ID (15 = Pets & Animals; see `catogory.txt`) |
+| `privacy_status` | string | `"private"` | app.py | `private` / `public` / `unlisted` |
+| `video_directory` | string | `"videos"` | app.py | Directory containing MP4 files to upload |
+| `csv_file` | string | `"video_metadata.csv"` | app.py | CSV with video metadata (consumed via `csv.DictReader`) |
+| `set_size` | int | `5` | app.py | Number of videos per batch (one batch per day) |
+| `start_date` | string | `"2025-04-26"` | app.py | Start date for scheduling (YYYY-MM-DD) |
+| `schedule_timings` | array | `[[23,0],[23,30],[0,0],...]` | app.py | List of `[hour, minute]` UTC times per video within a batch |
+| `oauth_port` | int | `0` | app.py | Local server port for OAuth callback (0 = random available port) |
+| `auth_method` | string | `"console"` | app.py | `console` (no redirect URI needed) or `local_server` (needs registered redirect URI) |
+| `clips_dir` | string | (required) | convert_clips.py | Directory containing clip JSON + MP4 files |
+| `repo_dir` | string | (script dir) | convert_clips.py | Target repo directory (contains `app.py`) |
+| `video_directory` | string | `"videos"` | convert_clips.py | Subdirectory under `repo_dir` for staged MP4s |
+| `csv_file` | string | `"video_metadata.csv"` | convert_clips.py | Output CSV filename under `repo_dir` |
+| `glob_pattern` | string | `"clip*.json"` | convert_clips.py | Glob pattern to find clip metadata JSON files |
+| `video_ext` | string | `".mp4"` | convert_clips.py | Extension of video files to copy alongside each JSON |
+| `file_name_pattern` | string | `"{stem}"` | convert_clips.py | Pattern to build video file name from JSON stem (`{stem}`, `{ext}`) |
+| `field_mapping` | object | (see below) | convert_clips.py | Maps CSV columns to source JSON keys |
 
 `field_mapping` example:
 
@@ -263,7 +236,7 @@ clip02.mp4,Another Title,"Desc","Tag1",0,
 
 | Argument | Description |
 |----------|-------------|
-| `--config` | Path to JSON config file (default: `app.config.json`) |
+| `--config` | Path to JSON config file (default: `config.json`) |
 | `--client-secrets-file` | Override `client_secrets_file` |
 | `--token-file` | Override `token_file` |
 | `--video-category` | Override `video_category` |
@@ -283,8 +256,8 @@ clip02.mp4,Another Title,"Desc","Tag1",0,
 | `--config` | Path to JSON config file |
 | `--clips-dir` | Directory containing clip JSON + MP4 files |
 | `--repo-dir` | Target repo directory |
-| `--videos-dir` | Subdirectory under repo-dir for staged MP4s |
-| `--csv-out` | Output CSV filename under repo-dir |
+| `--video-directory` | Subdirectory under repo-dir for staged MP4s |
+| `--csv-file` | Output CSV filename under repo-dir |
 
 ---
 
@@ -316,28 +289,25 @@ Two methods are supported:
 ## Example Workflow (New Clip Batch, New Channel)
 
 ```bash
-# 1. Create channel directory and converter config
+# 1. Create channel directory + copy root config as starting point
 mkdir -p channels/my-new-channel/videos
-cp convert_clips.config.json channels/my-new-channel/convert_clips.config.json
+cp config.json channels/my-new-channel/config.json
 
-# 2. Edit channels/my-new-channel/convert_clips.config.json to set clips_dir
+# 2. Edit channels/my-new-channel/config.json as needed
+#    (set clips_dir, video_directory, csv_file, start_date, schedule_timings, etc.)
 
-# 3. Convert clips to CSV + stage MP4s
-python3 convert_clips.py --config channels/my-new-channel/convert_clips.config.json
+# 3. Convert clips to CSV + stage MP4s using channel config
+#    (set clips_dir in channels/my-new-channel/config.json first)
+python3 convert_clips.py --config channels/my-new-channel/config.json
 
 # 4. Verify the generated CSV
 cat channels/my-new-channel/video_metadata.csv
 
-# 5. Create channel upload config
-cp app.config.json channels/my-new-channel/config.json
-
-# 6. Edit channels/my-new-channel/config.json as needed
-
-# 7. Authenticate and list channels
+# 5. Authenticate and list channels
 rm -f token.json
 python3 app.py --list-channels
 
-# 8. Upload (select correct channel during OAuth if multiple)
+# 6. Upload (select correct channel during OAuth if multiple)
 python3 app.py --config channels/my-new-channel/config.json
 ```
 

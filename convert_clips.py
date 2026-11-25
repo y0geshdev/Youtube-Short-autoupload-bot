@@ -8,7 +8,7 @@ format ``app.py`` expects:
     File_name,title,description,tags
 
 Configuration is driven by an optional JSON config file (see
-``convert_clips.config.json`` for an example). CLI arguments override any value
+``config.json`` for an example). CLI arguments override any value
 set in the config file, so the script is generic and reusable across different
 clip batches and JSON schemas.
 
@@ -25,7 +25,7 @@ import shutil
 import sys
 from pathlib import Path
 
-DEFAULT_CONFIG_NAME = "convert_clips.config.json"
+DEFAULT_CONFIG_NAME = "config.json"
 
 
 def load_config(config_path: Path | None) -> dict:
@@ -80,8 +80,8 @@ def build_file_name(json_path: Path, pattern: str, video_ext: str) -> str:
 def convert(
     clips_dir: Path,
     repo_dir: Path,
-    videos_dir_name: str = "videos",
-    csv_out_name: str = "video_metadata.csv",
+    video_directory: str = "videos",
+    csv_file: str = "video_metadata.csv",
     *,
     glob_pattern: str = "clip*.json",
     video_ext: str = ".mp4",
@@ -90,10 +90,10 @@ def convert(
 ) -> int:
     clips_dir = clips_dir.resolve()
     repo_dir = repo_dir.resolve()
-    videos_dir = repo_dir / videos_dir_name
+    videos_dir = repo_dir / video_directory
     videos_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_path = repo_dir / csv_out_name
+    csv_path = repo_dir / csv_file
 
     clip_files = find_clip_jsons(clips_dir, glob_pattern)
     if not clip_files:
@@ -119,7 +119,7 @@ def convert(
 
         if mp4_src.exists():
             shutil.copy2(mp4_src, mp4_dst)
-            print(f"📼 Copied {mp4_name} -> {videos_dir_name}/")
+            print(f"📼 Copied {mp4_name} -> {video_directory}/")
         else:
             print(f"⚠️  {mp4_name} not found; row will still be written", file=sys.stderr)
 
@@ -145,7 +145,7 @@ def convert(
         writer.writerows(rows)
 
     print(f"✅ Wrote {len(rows)} rows to {csv_path}")
-    print(f"📁 Videos staged in {videos_dir}")
+    print(f"📁 Videos staged in {video_directory}")
     return len(rows)
 
 
@@ -157,7 +157,7 @@ def main() -> None:
         "--config",
         type=Path,
         default=None,
-        help="Path to JSON config file (defaults to convert_clips.config.json "
+        help="Path to JSON config file (defaults to config.json "
         "next to this script if present)",
     )
     parser.add_argument(
@@ -173,12 +173,12 @@ def main() -> None:
         help="Target repo directory (contains app.py)",
     )
     parser.add_argument(
-        "--videos-dir",
+        "--video-directory",
         default=None,
         help="Subdirectory name under repo-dir for staged MP4s",
     )
     parser.add_argument(
-        "--csv-out",
+        "--csv-file",
         default=None,
         help="Output CSV filename under repo-dir",
     )
@@ -193,8 +193,10 @@ def main() -> None:
     repo_dir = args.repo_dir if args.repo_dir is not None else Path(cfg("repo_dir", ""))
     if str(repo_dir) == "":
         repo_dir = Path(__file__).resolve().parent
-    videos_dir = args.videos_dir if args.videos_dir is not None else cfg("videos_dir", "videos")
-    csv_out = args.csv_out if args.csv_out is not None else cfg("csv_out", "video_metadata.csv")
+    video_directory = (
+        args.video_directory if args.video_directory is not None else cfg("video_directory", "videos")
+    )
+    csv_file = args.csv_file if args.csv_file is not None else cfg("csv_file", "video_metadata.csv")
 
     glob_pattern = cfg("glob_pattern", "clip*.json")
     video_ext = cfg("video_ext", ".mp4")
@@ -211,8 +213,8 @@ def main() -> None:
     convert(
         clips_dir,
         repo_dir,
-        videos_dir_name=videos_dir,
-        csv_out_name=csv_out,
+        video_directory=video_directory,
+        csv_file=csv_file,
         glob_pattern=glob_pattern,
         video_ext=video_ext,
         file_name_pattern=file_name_pattern,

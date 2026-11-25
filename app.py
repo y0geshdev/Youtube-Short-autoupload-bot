@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """YouTube Short auto-upload bot.
 
-Reads configuration from ``app.config.json`` (all upload constants, paths,
+Reads configuration from ``config.json`` (all upload constants, paths,
 schedule timings, etc.). CLI arguments override any config value, so nothing
 is hardcoded.
 
 Usage:
-    python app.py [--config app.config.json] [--csv-file video_metadata.csv] ...
+    python app.py [--config config.json] [--csv-file video_metadata.csv] ...
 """
 
 from __future__ import annotations
@@ -23,13 +23,13 @@ from pathlib import Path
 
 import google.auth.transport.requests
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+from googleapiclient.errors import HttpError, ResumableUploadError
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
-DEFAULT_CONFIG_NAME = "app.config.json"
+DEFAULT_CONFIG_NAME = "config.json"
 
 
 def load_config(config_path: Path | None = None) -> dict:
@@ -182,9 +182,11 @@ def get_authenticated_service():
             else:
                 # Local server flow: requires a matching redirect URI registered
                 # in Google Cloud Console (e.g. http://localhost:8080).
-                # oauth_port=0 picks a random available port.
+                # Matches get_token.py: port=0, access_type="offline", prompt="consent".
                 try:
-                    creds = flow.run_local_server(port=OAUTH_PORT)
+                    creds = flow.run_local_server(
+                        port=0, access_type="offline", prompt="consent"
+                    )
                 except Exception as exc:  # noqa: BLE001
                     msg = str(exc).lower()
                     if "redirect_uri_mismatch" in msg or "redirect" in msg:
@@ -260,6 +262,10 @@ def schedule_upload(youtube, file_path, title, description, tags, publish_time):
     return resumable_upload(request)
 
 
+class QuotaExceededError(Exception):
+    """Raised when the YouTube API daily quota or rate limit is exhausted."""
+
+
 def resumable_upload(request):
     response = None
     error = None
@@ -275,7 +281,32 @@ def resumable_upload(request):
                 else:
                     print(f"❌ Upload failed: {response}")
                     return None
-        except HttpError as e:
+        except (HttpError, ResumableUploadError) as e:
+            # YouTube quota exhausted (403 quotaExceeded), rate limited (429),
+            # or upload limit exceeded (400 uploadLimitExceeded).
+            # These are not retriable within the same run — stop gracefully so the
+            # current video stays unprocessed and can be retried next day.
+            try:
+                body = json.loads(e.content.decode() or "{}")
+                reason = (
+                    body.get("error", {})
+                    .get("errors", [{}])[0]
+                    .get("reason", "")
+                )
+            except (ValueError, AttributeError):
+                reason = ""
+
+            quota_reasons = ("quotaExceeded", "rateLimitExceeded", "uploadLimitExceeded")
+            is_quota_error = (
+                e.resp.status in (403, 429) or
+                (e.resp.status == 400 and (reason in quota_reasons or "exceeded" in reason.lower()))
+            )
+            if is_quota_error:
+                print(f"⛔ YouTube API quota/rate limit reached (HTTP {e.resp.status}, reason: {reason}).")
+                print("   Stopping upload run. Unprocessed videos will be retried on the next run.")
+                raise QuotaExceededError(
+                    f"YouTube API quota/rate limit reached (HTTP {e.resp.status}, reason: {reason})"
+                )
             if e.resp.status in [500, 502, 503, 504]:
                 error = f"A retriable HTTP error {e.resp.status} occurred: {e.content}"
             else:
@@ -320,7 +351,7 @@ def main() -> None:
         "--config",
         type=Path,
         default=None,
-        help="Path to JSON config file (defaults to app.config.json next to this script).",
+        help="Path to JSON config file (defaults to config.json next to this script).",
     )
     parser.add_argument(
         "--client-secrets-file",
@@ -376,6 +407,12 @@ def main() -> None:
         help="Override auth_method from config (local_server or console).",
     )
     parser.add_argument(
+        "--force-auth",
+        action="store_true",
+        default=None,
+        help="Delete the stored OAuth token before authenticating, forcing a fresh login so you can choose a different channel.",
+    )
+    parser.add_argument(
         "--list-channels",
         action="store_true",
         default=None,
@@ -420,6 +457,13 @@ def main() -> None:
     SCHEDULE_TIMINGS = [tuple(t) for t in merged["schedule_timings"]]
     OAUTH_PORT = merged["oauth_port"]
     AUTH_METHOD = merged["auth_method"]
+
+    # Force fresh OAuth: delete stored token so the user can choose a different channel.
+    if args.force_auth:
+        token_path = Path(TOKEN_FILE)
+        if token_path.exists():
+            token_path.unlink()
+            print(f"🗑️  Cleared stored token: {TOKEN_FILE}")
 
     youtube = get_authenticated_service()
 
@@ -496,7 +540,12 @@ def main() -> None:
                 f"🚀 Scheduling {file_name} for "
                 f"{publish_time.strftime('%Y-%m-%d %H:%M:%S')} UTC"
             )
-            video_id = schedule_upload(youtube, file_path, title, description, tags, publish_time)
+            try:
+                video_id = schedule_upload(youtube, file_path, title, description, tags, publish_time)
+            except QuotaExceededError as exc:
+                print(f"⛔ {exc}")
+                print("   Stopping upload run. Remaining unprocessed videos will be retried on the next run.")
+                return
             if video_id:
                 row["is_processed"] = "1"
                 row["video_id"] = video_id

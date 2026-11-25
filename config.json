@@ -1,0 +1,70 @@
+{
+  "_comment": {
+    "auth_method": "OAuth flow method: 'local_server' (opens browser, needs redirect URI registered) or 'console' (prints URL, no redirect URI needed).",
+    "client_secrets_file": "Path to Google OAuth 2.0 client secrets JSON (YouTube Data API v3 credentials).",
+    "clips_dir": "Directory containing per-clip JSON metadata files and matching MP4 videos.",
+    "csv_file": "CSV file with video metadata (consumed via csv.DictReader). Rows with is_processed=1 are skipped on re-runs; the script updates is_processed and video_id after each successful upload. Replaces the old 'csv_out' key — both now unify to 'csv_file'.",
+    "field_mapping": "Maps CSV output columns to source JSON keys. Use 'key:join:sep' syntax to join list values (e.g. hashtags:join:,). The 'is_processed' column defaults to 0 (unprocessed); app.py only uploads rows where is_processed=0 and flips it to 1 (processed) after a successful upload, storing the YouTube video_id. Re-running app.py is safe — processed rows are skipped.",
+    "file_name_pattern": "Pattern to build video file name from JSON stem; placeholders {stem} and {ext} supported (default: {stem}). File_name_pattern controls how the MP4 filename is built from each clip JSON's stem. {stem} — the JSON filename without extension (e.g. 'clip01' from 'clip01.json') {ext}  — the original file extension (e.g. '.json' from 'clip01.json') The pattern is formatted with {stem} and {ext}, then video_ext (.mp4) is appended. Default '{stem}' + '.mp4' produces 'clip01.mp4'. Use this if your MP4s don't share the exact same stem as your JSON files.",
+    "glob_pattern": "Glob pattern used to find clip metadata JSON files (default: clip*.json).",
+    "list_channels": "If true, lists all channels the authenticated user owns/manages and exits. Use --list-channels CLI flag to see available channels when the Google account has multiple YouTube channels.",
+    "oauth_port": "Local server port for OAuth callback (0 = random available port). Must match a redirect URI registered in Google Cloud Console (e.g. http://localhost:8080).",
+    "privacy_status": "Privacy status of uploaded videos (private/public/unlisted).",
+    "repo_dir": "Target repository directory (contains app.py and where videos/ + CSV will be written).",
+    "schedule_timings": "List of [hour, minute] UTC times for each video within a batch, applied in order.",
+    "set_size": "Number of videos to upload per batch (one batch per day).",
+    "start_date": "Start date for scheduling uploads (YYYY-MM-DD).",
+    "token_file": "Path to stored OAuth token file (created automatically on first auth).",
+    "video_category": "YouTube category ID for uploaded videos (15 = Pets & Animals; see catogory.txt for full list).",
+    "video_directory": "Directory containing MP4 video files to upload (relative to repo root). Used by both convert_clips.py (staging MP4s here) and app.py (reading MP4s from here). Replaces the old 'videos_dir' key — both now unify to 'video_directory'.",
+    "video_ext": "File extension of the video files to copy alongside each JSON (default: .mp4).",
+    "youtube_api_service_name": "Google API service name (always 'youtube').",
+    "youtube_api_version": "YouTube Data API version (always 'v3').",
+    "youtube_readonly_scope": "OAuth scope(s) for read-only YouTube access (needed to list channels). Combined with upload scope for OAuth flow.",
+    "youtube_upload_scope": "OAuth scope(s) requested for YouTube upload access."
+  },
+  "repo_dir": "/home/yogesh/Documents/repos/Youtube-Short-autoupload-bot",
+  "auth_method": "console",
+  "client_secrets_file": "client_secrets.json",
+  "token_file": "token.json",
+  "csv_file": "video_metadata.csv",
+  "field_mapping": {
+    "csv_columns": [
+      "File_name",
+      "title",
+      "description",
+      "tags",
+      "is_processed",
+      "video_id"
+    ],
+    "description": "description",
+    "tags": "hashtags:join:,",
+    "title": "title"
+  },
+  "file_name_pattern": "{stem}",
+  "glob_pattern": "clip*.json",
+  "youtube_api_service_name": "youtube",
+  "youtube_api_version": "v3",
+  "youtube_readonly_scope": [
+    "https://www.googleapis.com/auth/youtube.readonly"
+  ],
+  "youtube_upload_scope": [
+    "https://www.googleapis.com/auth/youtube.upload"
+  ],
+  "oauth_port": 0,
+  "video_ext": ".mp4",
+  "privacy_status": "private",
+  "video_category": "15",
+  "clips_dir": "@Source_Of_Raw_Clips",
+  "start_date": "2026-11-23",
+  "set_size": 6,
+  "schedule_timings": [
+    [7,32],
+    [7,45],
+    [8,0],
+    [8,15],
+    [8,30],
+    [8,45]
+  ],
+  "video_directory": "videos"
+}
