@@ -24,7 +24,7 @@
     "youtube_upload_scope": "OAuth scope(s) requested for YouTube upload access."
   },
   "repo_dir": "/home/yogesh/Documents/repos/Youtube-Short-autoupload-bot",
-  "auth_method": "console",
+  "auth_method": "local_server",
   "client_secrets_file": "client_secrets.json",
   "token_file": "token.json",
   "csv_file": "video_metadata.csv",
