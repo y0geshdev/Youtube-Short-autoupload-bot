@@ -216,6 +216,7 @@ def list_channels(youtube):
     desired channel during the Google authorization screen.
     """
     request = youtube.channels().list(mine=True, part="id,snippet")
+    print(f"🌐 API: GET {request.uri}")
     response = request.execute()
     channels = []
     for item in response.get("items", []):
@@ -254,16 +255,21 @@ def schedule_upload(youtube, file_path, title, description, tags, publish_time):
         },
         "status": {
             "privacyStatus": PRIVACY_STATUS,
-            "publishAt": publish_time.isoformat() + "Z",
+            "publishAt": publish_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         },
     }
     media = MediaFileUpload(file_path, chunksize=-1, resumable=True)
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+    print(f"🌐 API: POST {request.uri}")
     return resumable_upload(request)
 
 
 class QuotaExceededError(Exception):
-    """Raised when the YouTube API daily quota or rate limit is exhausted."""
+    """Raised when the YouTube API daily quota is exhausted."""
+
+
+class UploadLimitExceededError(Exception):
+    """Raised when YouTube's daily video upload count limit per channel is reached."""
 
 
 def resumable_upload(request):
@@ -282,10 +288,6 @@ def resumable_upload(request):
                     print(f"❌ Upload failed: {response}")
                     return None
         except (HttpError, ResumableUploadError) as e:
-            # YouTube quota exhausted (403 quotaExceeded), rate limited (429),
-            # or upload limit exceeded (400 uploadLimitExceeded).
-            # These are not retriable within the same run — stop gracefully so the
-            # current video stays unprocessed and can be retried next day.
             try:
                 body = json.loads(e.content.decode() or "{}")
                 reason = (
@@ -296,16 +298,21 @@ def resumable_upload(request):
             except (ValueError, AttributeError):
                 reason = ""
 
-            quota_reasons = ("quotaExceeded", "rateLimitExceeded", "uploadLimitExceeded")
-            is_quota_error = (
-                e.resp.status in (403, 429) or
-                (e.resp.status == 400 and (reason in quota_reasons or "exceeded" in reason.lower()))
-            )
-            if is_quota_error:
-                print(f"⛔ YouTube API quota/rate limit reached (HTTP {e.resp.status}, reason: {reason}).")
+            if e.resp.status in (403, 429) or reason == "quotaExceeded":
+                print(f"⛔ YouTube API quota exhausted (HTTP {e.resp.status}, reason: {reason}).")
                 print("   Stopping upload run. Unprocessed videos will be retried on the next run.")
                 raise QuotaExceededError(
-                    f"YouTube API quota/rate limit reached (HTTP {e.resp.status}, reason: {reason})"
+                    f"YouTube API quota exhausted (HTTP {e.resp.status}, reason: {reason})"
+                )
+            if e.resp.status == 400 and reason == "uploadLimitExceeded":
+                raise UploadLimitExceededError(
+                    f"YouTube daily upload count limit reached (HTTP {e.resp.status}, reason: {reason})."
+                )
+            if e.resp.status == 400 and reason == "rateLimitExceeded":
+                print(f"⛔ YouTube API rate limit reached (HTTP {e.resp.status}, reason: {reason}).")
+                print("   Stopping upload run. Unprocessed videos will be retried on the next run.")
+                raise QuotaExceededError(
+                    f"YouTube API rate limit reached (HTTP {e.resp.status}, reason: {reason})"
                 )
             if e.resp.status in [500, 502, 503, 504]:
                 error = f"A retriable HTTP error {e.resp.status} occurred: {e.content}"
@@ -520,6 +527,11 @@ def main() -> None:
         batch = pending[i : i + SET_SIZE]
         print(f"📅 Scheduling batch {i // SET_SIZE + 1} for {publish_date.strftime('%Y-%m-%d')} UTC")
 
+        # Track timing position across all videos in this batch so each
+        # video gets a unique, sequential time slot (not restarted per video).
+        batch_timing_idx = 0
+        num_timings = len(SCHEDULE_TIMINGS)
+
         for idx, row in enumerate(batch):
             file_name = row["File_name"].strip()
             title = row["title"].strip()
@@ -527,10 +539,41 @@ def main() -> None:
             tags = [tag.strip() for tag in row["tags"].split(",")]
             file_path = os.path.join(VIDEO_DIRECTORY, file_name)
 
-            schedule_time = SCHEDULE_TIMINGS[idx % len(SCHEDULE_TIMINGS)]
-            publish_time = publish_date.replace(
-                hour=schedule_time[0], minute=schedule_time[1], second=0
-            )
+            # Find the next available scheduled time that is in the future.
+            # Skip (and log) any timing that is already passed.
+            tried_all = False
+            start_timing_idx = batch_timing_idx
+
+            while True:
+                timing_pos = batch_timing_idx % num_timings
+                schedule_time = SCHEDULE_TIMINGS[timing_pos]
+                publish_time = publish_date.replace(
+                    hour=schedule_time[0], minute=schedule_time[1], second=0
+                ).replace(tzinfo=datetime.timezone.utc)
+
+                if publish_time > datetime.datetime.now(datetime.timezone.utc):
+                    break  # Found a future time
+
+                # This time is already passed — skip and try the next one.
+                print(
+                    f"⏭️  Skipping passed schedule time "
+                    f"{publish_time.strftime('%H:%M')} UTC for {file_name}"
+                )
+
+                batch_timing_idx += 1
+                if batch_timing_idx % num_timings == start_timing_idx % num_timings:
+                    tried_all = True
+                    break  # Tried all timings, none are in the future
+
+            if tried_all:
+                print(
+                    f"⚠️  All schedule times are in the past for "
+                    f"{file_name} on {publish_date.strftime('%Y-%m-%d')}. Skipping video."
+                )
+                continue
+
+            # Advance timing index so the next video gets the next slot.
+            batch_timing_idx += 1
 
             if not os.path.exists(file_path):
                 print(f"⚠️ File '{file_name}' not found in '{VIDEO_DIRECTORY}'. Skipping.")
@@ -542,7 +585,7 @@ def main() -> None:
             )
             try:
                 video_id = schedule_upload(youtube, file_path, title, description, tags, publish_time)
-            except QuotaExceededError as exc:
+            except (QuotaExceededError, UploadLimitExceededError) as exc:
                 print(f"⛔ {exc}")
                 print("   Stopping upload run. Remaining unprocessed videos will be retried on the next run.")
                 return
